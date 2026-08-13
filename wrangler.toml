@@ -1,9 +1,8 @@
-# Cloudflare Workers static assets deployment for City 360
-# `wrangler deploy` with [assets] serves the out/ folder as a static Worker site
+# Cloudflare Workers static assets & API proxy deployment for City 360
 
 name = "city-360"
+main = "worker.ts"
 compatibility_date = "2024-09-23"
 
 [assets]
 directory = "./out"
-

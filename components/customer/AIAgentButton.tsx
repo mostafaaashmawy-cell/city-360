@@ -84,33 +84,22 @@ const stateGradients: Record<AgentState, string> = {
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
+import { useGeminiLive } from '@/hooks/useGeminiLive';
+
 export default function AIAgentButton() {
-  const { agentState, setAgentState, showSmartCards, hideSmartCards, smartCardsVisible } =
-    useAgent();
+  const { agentState } = useAgent();
   const { language } = useSettings();
   const [showTooltip, setShowTooltip] = useState(false);
+  const { connect, disconnect, error } = useGeminiLive();
 
-  // Auto-demo cycle for visual preview
+  // Handle click by triggering real Gemini Live connection
   const handleClick = useCallback(() => {
     if (agentState === 'idle') {
-      setAgentState('listening');
-      setTimeout(() => {
-        setAgentState('processing');
-        setTimeout(() => {
-          setAgentState('speaking');
-          // Show smart cards when agent speaks
-          showSmartCards(DEMO_SMART_CARDS);
-          setTimeout(() => {
-            setAgentState('idle');
-          }, 4000);
-        }, 2000);
-      }, 3000);
+      connect();
     } else {
-      // If already active, stop and reset
-      setAgentState('idle');
-      hideSmartCards();
+      disconnect();
     }
-  }, [agentState, setAgentState, showSmartCards, hideSmartCards]);
+  }, [agentState, connect, disconnect]);
 
   const label = stateLabels[agentState][language];
 
