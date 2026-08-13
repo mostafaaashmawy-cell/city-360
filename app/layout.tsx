@@ -17,13 +17,13 @@ const cairo = Cairo({
 });
 
 export const metadata: Metadata = {
-  title: 'City 360 — Virtual Property Tour',
+  title: 'City Scale — Virtual Property Tour',
   description:
-    'Experience immersive 360° virtual property tours with AI-powered guidance. Explore your dream home from anywhere.',
-  keywords: 'virtual tour, real estate, property, 360, AI, sales agent',
+    'Experience immersive 360° virtual property tours with AI-powered guidance by City Scale — Physical & Visual Modeling Co.',
+  keywords: 'virtual tour, real estate, property, 360, AI, sales agent, City Scale',
   openGraph: {
-    title: 'City 360 — Virtual Property Tour',
-    description: 'AI-powered virtual real estate tours',
+    title: 'City Scale — Virtual Property Tour',
+    description: 'AI-powered virtual real estate tours by City Scale',
     type: 'website',
   },
 };

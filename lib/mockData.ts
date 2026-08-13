@@ -47,12 +47,12 @@ export const DEMO_SMART_CARDS: SmartCardData[] = [
 // ─── Default App Settings ─────────────────────────────────────────────────────
 export const mockSettings: AppSettings = {
   id: '1',
-  company_logo_url: '/logo-placeholder.svg',
-  company_name: 'City 360',
-  company_name_ar: 'سيتي 360',
+  company_logo_url: '/city-scale-logo.png',
+  company_name: 'City Scale',
+  company_name_ar: 'سيتي سكيل',
   project_name: 'The Grand Tower',
   project_name_ar: 'البرج الكبير',
-  coohom_url: 'https://www.coohom.com/pub/tool/panorama/index',
+  coohom_url: 'https://www.coohom.com/pub/tool/panorama/aiwalking?obsPlanId=3FO3DBYBNCU7&locale=en_US',
   whatsapp_number: '201000000000',
   ai_api_key: '',
   ai_connection_method: 'vapi',
