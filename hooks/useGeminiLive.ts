@@ -219,7 +219,7 @@ IMPORTANT: When presenting any financial figures, numbers, area sizes or key poi
 
     const setupMessage = {
       setup: {
-        model: 'models/gemini-2.0-flash-exp',
+        model: 'models/gemini-2.5-flash-native-audio-latest',
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: {
@@ -440,7 +440,10 @@ IMPORTANT: When presenting any financial figures, numbers, area sizes or key poi
         disconnect();
       };
 
-      ws.onclose = () => {
+      ws.onclose = (e) => {
+        if (e.code !== 1000 && e.reason) {
+          setError(e.reason);
+        }
         disconnect();
       };
 
