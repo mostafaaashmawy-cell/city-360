@@ -45,10 +45,23 @@ export default {
         const server = pair[1];
         server.accept();
 
+        const sendQueue: any[] = [];
+        let isGeminiReady = false;
+
+        geminiWs.addEventListener('open', () => {
+          isGeminiReady = true;
+          while (sendQueue.length > 0) {
+            const data = sendQueue.shift();
+            geminiWs.send(data);
+          }
+        });
+
         // 1. Pipe client audio/messages to Gemini API
         server.addEventListener('message', (event: MessageEvent) => {
-          if (geminiWs.readyState === WebSocket.OPEN) {
+          if (isGeminiReady && geminiWs.readyState === WebSocket.OPEN) {
             geminiWs.send(event.data);
+          } else {
+            sendQueue.push(event.data);
           }
         });
 

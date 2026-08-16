@@ -334,9 +334,16 @@ IMPORTANT RULE: Whenever you discuss or present specific financial numbers, down
         setupSession(ws);
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = async (event) => {
         try {
-          const message = JSON.parse(event.data);
+          let rawData = event.data;
+          if (rawData instanceof Blob) {
+            rawData = await rawData.text();
+          } else if (rawData instanceof ArrayBuffer) {
+            rawData = new TextDecoder().decode(rawData);
+          }
+
+          const message = JSON.parse(rawData);
 
           // Confirmation of session setup
           if (message.setupComplete) {
