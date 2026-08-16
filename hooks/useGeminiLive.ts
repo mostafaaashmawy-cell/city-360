@@ -27,6 +27,7 @@ export function useGeminiLive() {
 
   // Playback references
   const audioContextOutputRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const nextPlayTimeRef = useRef<number>(0);
 
@@ -63,6 +64,14 @@ export function useGeminiLive() {
         audioCtx.resume();
       }
 
+      // Initialize Gain Node for comfortable, controlled audio volume
+      if (!gainNodeRef.current) {
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.value = 0.65; // Comfortable, natural conversation volume
+        gainNode.connect(audioCtx.destination);
+        gainNodeRef.current = gainNode;
+      }
+
       // Base64 PCM 16-bit to Float32Array
       const binaryString = window.atob(base64Data);
       const len = binaryString.length;
@@ -82,7 +91,13 @@ export function useGeminiLive() {
 
       const source = audioCtx.createBufferSource();
       source.buffer = audioBuffer;
-      source.connect(audioCtx.destination);
+      
+      // Connect through gain node for soft, clear sound
+      if (gainNodeRef.current) {
+        source.connect(gainNodeRef.current);
+      } else {
+        source.connect(audioCtx.destination);
+      }
 
       const currentTime = audioCtx.currentTime;
       if (nextPlayTimeRef.current < currentTime) {
@@ -300,8 +315,15 @@ IMPORTANT RULE: Whenever you discuss or present specific financial numbers, down
     setError(null);
 
     try {
-      // 1. Immediately request microphone access inside user click gesture (required for mobile browsers)
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 1. Immediately request microphone access with hardware echo cancellation and noise suppression
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       mediaStreamRef.current = stream;
 
       // Initialize audio contexts on user gesture
@@ -378,15 +400,24 @@ IMPORTANT RULE: Whenever you discuss or present specific financial numbers, down
 
                 const inputData = audioEvent.inputBuffer.getChannelData(0);
 
-                // Barge-in detector: If user speaks, interrupt AI audio immediately
+                // Calculate RMS energy level
                 let sum = 0;
                 for (let i = 0; i < inputData.length; i++) {
                   sum += inputData[i] * inputData[i];
                 }
                 const rms = Math.sqrt(sum / inputData.length);
-                if (rms > 0.04 && nextPlayTimeRef.current > 0) {
-                  stopAIPlayback();
-                  updateStatus('listening');
+
+                const isAISpeaking = activeSourcesRef.current.length > 0;
+
+                // Barge-in check: If AI is speaking and user intentionally talks (energy threshold)
+                if (isAISpeaking) {
+                  if (rms > 0.08) {
+                    stopAIPlayback();
+                    updateStatus('listening');
+                  } else {
+                    // Do NOT send microphone audio back to Gemini while AI is speaking (prevents echo & CONTENT_TYPE_AUDIO errors)
+                    return;
+                  }
                 }
 
                 // Send PCM 16-bit audio chunk to Gemini
