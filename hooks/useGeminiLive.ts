@@ -317,6 +317,18 @@ IMPORTANT RULE: Whenever you discuss or present specific financial numbers, down
         await audioContextOutputRef.current.resume();
       }
 
+      // Auto-resume audio contexts if backgrounded or interrupted by iframe media
+      audioContextInputRef.current.onstatechange = () => {
+        if (audioContextInputRef.current && audioContextInputRef.current.state === 'suspended') {
+          audioContextInputRef.current.resume().catch(() => {});
+        }
+      };
+      audioContextOutputRef.current.onstatechange = () => {
+        if (audioContextOutputRef.current && audioContextOutputRef.current.state === 'suspended') {
+          audioContextOutputRef.current.resume().catch(() => {});
+        }
+      };
+
       // 2. Fetch connection details from API endpoint
       const response = await fetch('/api/gemini-session');
       const data = await response.json();

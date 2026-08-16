@@ -16,8 +16,8 @@ export default function CoohomIframe({ url }: CoohomIframeProps) {
       className="fixed inset-0 w-full h-full border-none"
       style={{ zIndex: 0 }}
       allowFullScreen
-      allow="xr-spatial-tracking; gyroscope; accelerometer; autoplay; fullscreen"
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock allow-top-navigation"
+      allow="xr-spatial-tracking; gyroscope; accelerometer; fullscreen"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock"
       loading="lazy"
     />
   );
