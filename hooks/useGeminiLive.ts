@@ -32,6 +32,7 @@ export function useGeminiLive() {
   const nextPlayTimeRef = useRef<number>(0);
 
   const isConnectingRef = useRef<boolean>(false);
+  const isToolExecutingRef = useRef<boolean>(false);
 
   // Sync state
   const updateStatus = useCallback((newState: AgentState) => {
@@ -173,7 +174,6 @@ IMPORTANT RULE: Whenever you discuss or present specific financial numbers, down
       setup: {
         model: 'models/gemini-2.5-flash-native-audio-latest',
         generationConfig: {
-          responseModalities: ['AUDIO'],
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {
@@ -229,6 +229,7 @@ IMPORTANT RULE: Whenever you discuss or present specific financial numbers, down
 
   const handleToolCall = useCallback((ws: WebSocket, call: any) => {
     try {
+      isToolExecutingRef.current = true;
       const { name, args, id } = call;
       if (name === 'show_dynamic_smart_cards') {
         const { downpayment, monthly_installment, area, key_selling_points } = args;
@@ -287,6 +288,10 @@ IMPORTANT RULE: Whenever you discuss or present specific financial numbers, down
       }
     } catch (err) {
       console.error('Failed to handle tool call:', err);
+    } finally {
+      setTimeout(() => {
+        isToolExecutingRef.current = false;
+      }, 500);
     }
   }, [showSmartCards]);
 
@@ -397,6 +402,7 @@ IMPORTANT RULE: Whenever you discuss or present specific financial numbers, down
 
               scriptProcessorRef.current.onaudioprocess = (audioEvent) => {
                 if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+                if (isToolExecutingRef.current) return;
 
                 const inputData = audioEvent.inputBuffer.getChannelData(0);
 
