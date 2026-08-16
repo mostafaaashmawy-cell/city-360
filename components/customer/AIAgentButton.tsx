@@ -105,8 +105,17 @@ export default function AIAgentButton() {
 
   return (
     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[60] flex flex-col items-center gap-2">
+      {/* Error Badge */}
+      {error && (
+        <div
+          className="bg-rose-500/90 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-lg animate-fade-in whitespace-nowrap border border-rose-400"
+        >
+          {error}
+        </div>
+      )}
+
       {/* Tooltip */}
-      {showTooltip && agentState === 'idle' && (
+      {showTooltip && agentState === 'idle' && !error && (
         <div
           className="glass px-3 py-1.5 rounded-full text-xs font-medium text-white/90 animate-fade-in whitespace-nowrap"
           style={{ border: '1px solid rgba(255,255,255,0.15)' }}
