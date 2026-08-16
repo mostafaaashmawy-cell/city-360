@@ -1,3 +1,6 @@
+// Fallback injected at build time if present in Cloudflare Build Variables
+const INJECTED_KEY = '__GEMINI_KEY_PLACEHOLDER__';
+
 export interface Env {
   ASSETS: { fetch: typeof fetch };
   GEMINI_API_KEY?: string;
@@ -9,7 +12,9 @@ export default {
 
     // ─── Secure Gemini Live WebSocket API Proxy ─────────────────────────────────────────
     if (url.pathname === '/api/gemini-session') {
-      const apiKey = env.GEMINI_API_KEY;
+      const apiKey =
+        env.GEMINI_API_KEY ||
+        (INJECTED_KEY !== '__GEMINI_KEY_PLACEHOLDER__' ? INJECTED_KEY : undefined);
 
       if (!apiKey) {
         return new Response(
@@ -53,7 +58,7 @@ export default {
         });
 
         geminiWs.addEventListener('close', () => {
-          server.close();
+          geminiWs.close();
         });
 
         geminiWs.addEventListener('error', () => {
