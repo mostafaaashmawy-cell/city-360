@@ -1,20 +1,7 @@
 import type { Metadata } from 'next';
-import { Inter, Cairo } from 'next/font/google';
 import './globals.css';
 import { SettingsProvider } from '@/context/SettingsContext';
 import { AgentProvider } from '@/context/AgentContext';
-
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-});
-
-const cairo = Cairo({
-  subsets: ['arabic', 'latin'],
-  variable: '--font-cairo',
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   title: 'City Scale — Virtual Property Tour',
@@ -35,7 +22,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
-      <body className={`${inter.variable} ${cairo.variable} font-sans antialiased`}>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body className="font-sans antialiased">
         <SettingsProvider>
           <AgentProvider>{children}</AgentProvider>
         </SettingsProvider>
