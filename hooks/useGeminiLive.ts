@@ -526,6 +526,37 @@ IMPORTANT RULE: Whenever you discuss or present specific financial numbers, down
     if (isRecordingRef.current) {
       isRecordingRef.current = false;
       updateStatus('processing'); // Transition to thinking while waiting for AI response
+
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        // 1. Send trailing empty/silence buffer to cleanly flush the audio pipeline
+        const silenceBuffer = new ArrayBuffer(640);
+        const base64Silence = arrayBufferToBase64(silenceBuffer);
+        try {
+          wsRef.current.send(
+            JSON.stringify({
+              realtimeInput: {
+                mediaChunks: [
+                  {
+                    data: base64Silence,
+                    mimeType: 'audio/pcm;rate=16000',
+                  },
+                ],
+              },
+            })
+          );
+        } catch (e) {}
+
+        // 2. Explicitly signal end-of-turn so Gemini generates response immediately with zero delay
+        try {
+          wsRef.current.send(
+            JSON.stringify({
+              clientContent: {
+                turnComplete: true,
+              },
+            })
+          );
+        } catch (e) {}
+      }
     }
   }, [updateStatus]);
 
