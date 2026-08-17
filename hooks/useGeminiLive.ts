@@ -546,11 +546,17 @@ IMPORTANT RULE: Whenever you discuss or present specific financial numbers, down
           );
         } catch (e) {}
 
-        // 2. Explicitly signal end-of-turn so Gemini generates response immediately with zero delay
+        // 2. Explicitly signal end-of-turn with valid turns structure so Gemini generates response immediately with zero error
         try {
           wsRef.current.send(
             JSON.stringify({
               clientContent: {
+                turns: [
+                  {
+                    role: 'user',
+                    parts: [{ text: ' ' }],
+                  },
+                ],
                 turnComplete: true,
               },
             })
