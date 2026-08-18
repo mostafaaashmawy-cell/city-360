@@ -10,6 +10,26 @@ const INPUT_SAMPLE_RATE = 16000;
 const BUFFER_SIZE = 2048;
 const OUTPUT_SAMPLE_RATE = 24000;
 
+// ─── PCM Helpers (module scope so stable across renders) ───────────────────────
+function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(input.length * 2);
+  const view = new DataView(buffer);
+  for (let i = 0; i < input.length; i++) {
+    const s = Math.max(-1, Math.min(1, input[i]));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return buffer;
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
 export function useGeminiLive() {
   const { setAgentState, showSmartCards, hideSmartCards } = useAgent();
   const { language } = useSettings();
@@ -18,25 +38,25 @@ export function useGeminiLive() {
   const [error, setError] = useState<string | null>(null);
   const [isHolding, setIsHolding] = useState<boolean>(false);
 
-  // WebSocket reference
+  // WebSocket & session state
   const wsRef = useRef<WebSocket | null>(null);
+  const sessionReadyRef = useRef<boolean>(false);      // true after setupComplete received
+  const isConnectingRef = useRef<boolean>(false);
+  const isRecordingRef = useRef<boolean>(false);
+  const isToolExecutingRef = useRef<boolean>(false);
 
-  // Recording references
+  // Input audio
   const audioContextInputRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const isRecordingRef = useRef<boolean>(false);
 
-  // Playback references
+  // Output audio (AI speech)
   const audioContextOutputRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const nextPlayTimeRef = useRef<number>(0);
 
-  const isConnectingRef = useRef<boolean>(false);
-  const isToolExecutingRef = useRef<boolean>(false);
-
-  // Sync state
+  // Callbacks that want the latest wsRef without stale closures
   const updateStatus = useCallback(
     (newState: AgentState) => {
       setStatus(newState);
@@ -45,14 +65,10 @@ export function useGeminiLive() {
     [setAgentState]
   );
 
-  // ─── 1. Playback Queue Control (AI Speech) ───────────────────────────────────
+  // ─── Playback helpers ─────────────────────────────────────────────────────────
   const stopAIPlayback = useCallback(() => {
-    activeSourcesRef.current.forEach((source) => {
-      try {
-        source.stop();
-      } catch (e) {
-        // finished
-      }
+    activeSourcesRef.current.forEach((src) => {
+      try { src.stop(); } catch (_) {}
     });
     activeSourcesRef.current = [];
     nextPlayTimeRef.current = 0;
@@ -67,112 +83,52 @@ export function useGeminiLive() {
         }
 
         const audioCtx = audioContextOutputRef.current;
-        if (audioCtx.state === 'suspended') {
-          audioCtx.resume();
-        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
 
-        // Initialize Gain Node for comfortable volume
         if (!gainNodeRef.current) {
-          const gainNode = audioCtx.createGain();
-          gainNode.gain.value = 0.7;
-          gainNode.connect(audioCtx.destination);
-          gainNodeRef.current = gainNode;
+          const gn = audioCtx.createGain();
+          gn.gain.value = 0.8;
+          gn.connect(audioCtx.destination);
+          gainNodeRef.current = gn;
         }
 
-        // Base64 PCM 16-bit to Float32Array
-        const binaryString = window.atob(base64Data);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
+        const binaryStr = window.atob(base64Data);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
 
-        const int16Array = new Int16Array(bytes.buffer);
-        const float32Array = new Float32Array(int16Array.length);
-        for (let i = 0; i < int16Array.length; i++) {
-          float32Array[i] = int16Array[i] / 32768.0;
-        }
+        const int16 = new Int16Array(bytes.buffer);
+        const f32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) f32[i] = int16[i] / 32768.0;
 
-        const audioBuffer = audioCtx.createBuffer(1, float32Array.length, OUTPUT_SAMPLE_RATE);
-        audioBuffer.getChannelData(0).set(float32Array);
+        const buf = audioCtx.createBuffer(1, f32.length, OUTPUT_SAMPLE_RATE);
+        buf.getChannelData(0).set(f32);
 
-        const source = audioCtx.createBufferSource();
-        source.buffer = audioBuffer;
+        const src = audioCtx.createBufferSource();
+        src.buffer = buf;
+        src.connect(gainNodeRef.current ?? audioCtx.destination);
 
-        if (gainNodeRef.current) {
-          source.connect(gainNodeRef.current);
-        } else {
-          source.connect(audioCtx.destination);
-        }
+        const now = audioCtx.currentTime;
+        if (nextPlayTimeRef.current < now) nextPlayTimeRef.current = now;
+        src.start(nextPlayTimeRef.current);
+        nextPlayTimeRef.current += buf.duration;
 
-        const currentTime = audioCtx.currentTime;
-        if (nextPlayTimeRef.current < currentTime) {
-          nextPlayTimeRef.current = currentTime;
-        }
+        activeSourcesRef.current.push(src);
+        updateStatus('speaking');
 
-        source.start(nextPlayTimeRef.current);
-        activeSourcesRef.current.push(source);
-
-        source.onended = () => {
-          activeSourcesRef.current = activeSourcesRef.current.filter((s) => s !== source);
+        src.onended = () => {
+          activeSourcesRef.current = activeSourcesRef.current.filter((s) => s !== src);
           if (activeSourcesRef.current.length === 0 && !isRecordingRef.current) {
             updateStatus('idle');
           }
         };
-
-        nextPlayTimeRef.current += audioBuffer.duration;
-        if (!isRecordingRef.current) {
-          updateStatus('speaking');
-        }
       } catch (err) {
-        console.error('Audio playback error:', err);
+        console.error('[playPCMChunk] error:', err);
       }
     },
     [updateStatus]
   );
 
-  // ─── 2. Helpers for Audio Recording ─────────────────────────────────────────
-  const floatTo16BitPCM = (input: Float32Array): ArrayBuffer => {
-    const buffer = new ArrayBuffer(input.length * 2);
-    const view = new DataView(buffer);
-    for (let i = 0; i < input.length; i++) {
-      const s = Math.max(-1, Math.min(1, input[i]));
-      view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-    }
-    return buffer;
-  };
-
-  const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    return window.btoa(binary);
-  };
-
-  const stopRecording = useCallback(() => {
-    isRecordingRef.current = false;
-    if (scriptProcessorRef.current) {
-      try {
-        scriptProcessorRef.current.disconnect();
-      } catch (e) {}
-      scriptProcessorRef.current = null;
-    }
-    if (audioContextInputRef.current) {
-      try {
-        audioContextInputRef.current.close();
-      } catch (e) {}
-      audioContextInputRef.current = null;
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    }
-  }, []);
-
-  // ─── 3. Session Initiation & Tool Handling ──────────────────────────────────
+  // ─── Session setup message ────────────────────────────────────────────────────
   const setupSession = useCallback((ws: WebSocket) => {
     const systemPrompt = `You are Layla, a friendly and expert Egyptian real estate sales agent representing "City Scale" physical & visual modeling company.
 Speak in a warm, helpful, and natural conversational tone. 
@@ -181,403 +137,373 @@ Keep answers concise, clear, and focused.
 When explaining property pricing, units, downpayments, or monthly installments, calculate financial installments based on a 7-year installment plan.
 IMPORTANT RULE: Whenever you discuss or present specific financial numbers, downpayment, monthly installment, unit area, or key features, you MUST invoke the 'show_dynamic_smart_cards' tool to show those figures visually on the user's screen.`;
 
-    const setupMessage = {
-      setup: {
-        model: 'models/gemini-2.5-flash-native-audio-latest',
-        generationConfig: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName: 'Aoede',
-              },
+    ws.send(
+      JSON.stringify({
+        setup: {
+          model: 'models/gemini-2.5-flash-native-audio-latest',
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } },
             },
           },
-        },
-        systemInstruction: {
-          parts: [{ text: systemPrompt }],
-        },
-        tools: [
-          {
-            functionDeclarations: [
-              {
-                name: 'show_dynamic_smart_cards',
-                description: 'Displays a visual panel showing downpayment, monthly installments over 7 years, area, and key highlights.',
-                parameters: {
-                  type: 'OBJECT',
-                  properties: {
-                    downpayment: {
-                      type: 'NUMBER',
-                      description: 'The downpayment amount in EGP.',
-                    },
-                    monthly_installment: {
-                      type: 'NUMBER',
-                      description: 'The calculated monthly installment amount in EGP (over 7 years).',
-                    },
-                    area: {
-                      type: 'STRING',
-                      description: 'The property unit area, e.g. "145 m² — 3 Bed, 2 Bath".',
-                    },
-                    key_selling_points: {
-                      type: 'ARRAY',
-                      items: {
-                        type: 'STRING',
-                      },
-                      description: 'Key highlights or selling points, e.g. ["Pool View", "Smart Home", "7-Yr Installments"].',
-                    },
-                  },
-                  required: ['downpayment', 'monthly_installment', 'area', 'key_selling_points'],
-                },
-              },
-            ],
+          // Disable automatic VAD so we control turn boundaries with activityStart/activityEnd
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: true,
+            },
           },
-        ],
-      },
-    };
-
-    console.log('Sending Gemini Live setup message...');
-    ws.send(JSON.stringify(setupMessage));
-  }, []);
-
-  const handleToolCall = useCallback(
-    (ws: WebSocket, call: any) => {
-      try {
-        const { name, args, id } = call;
-        if (name === 'show_dynamic_smart_cards') {
-          isToolExecutingRef.current = true;
-          const { downpayment, monthly_installment, area, key_selling_points } = args;
-
-          const cards: SmartCardData[] = [
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          tools: [
             {
-              id: 'dp',
-              label: 'Downpayment',
-              labelAr: 'مقدم الحجز',
-              value: `EGP ${Number(downpayment || 0).toLocaleString()}`,
-              icon: '💰',
-              color: 'green',
-            },
-            {
-              id: 'inst',
-              label: 'Installments',
-              labelAr: 'الأقساط الشهرية',
-              value: `EGP ${Number(monthly_installment || 0).toLocaleString()} / month (7 yrs)`,
-              icon: '📅',
-              color: 'blue',
-            },
-            {
-              id: 'area',
-              label: 'Unit Area',
-              labelAr: 'مساحة الوحدة',
-              value: String(area || ''),
-              icon: '📐',
-              color: 'purple',
-            },
-            {
-              id: 'kw',
-              label: 'Highlights',
-              labelAr: 'المميزات',
-              value: Array.isArray(key_selling_points) ? key_selling_points.join(' · ') : '',
-              icon: '✨',
-              color: 'rose',
-            },
-          ];
-
-          showSmartCards(cards);
-
-          const toolResponse = {
-            toolResponse: {
-              functionResponses: [
+              functionDeclarations: [
                 {
-                  id: id,
-                  name: name,
-                  response: {
-                    output: { status: 'success', message: 'Cards shown visually to user.' },
+                  name: 'show_dynamic_smart_cards',
+                  description:
+                    'Displays a visual panel showing downpayment, monthly installments over 7 years, area, and key highlights.',
+                  parameters: {
+                    type: 'OBJECT',
+                    properties: {
+                      downpayment: { type: 'NUMBER', description: 'Downpayment amount in EGP.' },
+                      monthly_installment: {
+                        type: 'NUMBER',
+                        description: 'Monthly installment over 7 years in EGP.',
+                      },
+                      area: { type: 'STRING', description: 'Unit area, e.g. "145 m²".' },
+                      key_selling_points: {
+                        type: 'ARRAY',
+                        items: { type: 'STRING' },
+                        description: 'Key selling points.',
+                      },
+                    },
+                    required: [
+                      'downpayment',
+                      'monthly_installment',
+                      'area',
+                      'key_selling_points',
+                    ],
                   },
                 },
               ],
             },
-          };
-          ws.send(JSON.stringify(toolResponse));
-          setTimeout(() => {
-            isToolExecutingRef.current = false;
-          }, 500);
-        }
+          ],
+        },
+      })
+    );
+    console.log('[setupSession] setup message sent');
+  }, []);
+
+  // ─── Tool call handler ────────────────────────────────────────────────────────
+  const handleToolCall = useCallback(
+    (ws: WebSocket, call: any) => {
+      try {
+        const { name, args, id } = call;
+        if (name !== 'show_dynamic_smart_cards') return;
+
+        isToolExecutingRef.current = true;
+        const { downpayment, monthly_installment, area, key_selling_points } = args;
+
+        const cards: SmartCardData[] = [
+          {
+            id: 'dp',
+            label: 'Downpayment',
+            labelAr: 'مقدم الحجز',
+            value: `EGP ${Number(downpayment || 0).toLocaleString()}`,
+            icon: '💰',
+            color: 'green',
+          },
+          {
+            id: 'inst',
+            label: 'Installments',
+            labelAr: 'الأقساط الشهرية',
+            value: `EGP ${Number(monthly_installment || 0).toLocaleString()} / month (7 yrs)`,
+            icon: '📅',
+            color: 'blue',
+          },
+          {
+            id: 'area',
+            label: 'Unit Area',
+            labelAr: 'مساحة الوحدة',
+            value: String(area || ''),
+            icon: '📐',
+            color: 'purple',
+          },
+          {
+            id: 'kw',
+            label: 'Highlights',
+            labelAr: 'المميزات',
+            value: Array.isArray(key_selling_points) ? key_selling_points.join(' · ') : '',
+            icon: '✨',
+            color: 'rose',
+          },
+        ];
+
+        showSmartCards(cards);
+        ws.send(
+          JSON.stringify({
+            toolResponse: {
+              functionResponses: [
+                {
+                  id,
+                  name,
+                  response: { output: { status: 'success' } },
+                },
+              ],
+            },
+          })
+        );
+        setTimeout(() => {
+          isToolExecutingRef.current = false;
+        }, 500);
       } catch (err) {
-        console.error('Failed to handle tool call:', err);
+        console.error('[handleToolCall] error:', err);
         isToolExecutingRef.current = false;
       }
     },
     [showSmartCards]
   );
 
-  // ─── 4. Connection Lifecycle ──────────────────────────────────────────────────
+  // ─── Disconnect / cleanup ─────────────────────────────────────────────────────
   const disconnect = useCallback(() => {
-    updateStatus('idle');
-    setIsHolding(false);
-    isConnectingRef.current = false;
     isRecordingRef.current = false;
+    sessionReadyRef.current = false;
+    isConnectingRef.current = false;
+    setIsHolding(false);
 
-    stopRecording();
+    // Stop mic processor
+    try { scriptProcessorRef.current?.disconnect(); } catch (_) {}
+    scriptProcessorRef.current = null;
+    try { audioContextInputRef.current?.close(); } catch (_) {}
+    audioContextInputRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    mediaStreamRef.current = null;
+
+    // Stop playback
     stopAIPlayback();
+    gainNodeRef.current = null;
+    try { audioContextOutputRef.current?.close(); } catch (_) {}
+    audioContextOutputRef.current = null;
+
+    // Close WS
+    try { wsRef.current?.close(); } catch (_) {}
+    wsRef.current = null;
+
     hideSmartCards();
+    updateStatus('idle');
+  }, [stopAIPlayback, hideSmartCards, updateStatus]);
 
-    if (wsRef.current) {
-      try {
-        wsRef.current.close();
-      } catch (e) {}
-      wsRef.current = null;
-    }
-  }, [stopRecording, stopAIPlayback, hideSmartCards, updateStatus]);
-
-  const connectAndInit = useCallback(async (): Promise<WebSocket | null> => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      return wsRef.current;
-    }
-
-    if (isConnectingRef.current) return null;
+  // ─── Full initialization (called once on first press) ────────────────────────
+  const initSession = useCallback(async (): Promise<boolean> => {
+    if (sessionReadyRef.current && wsRef.current?.readyState === WebSocket.OPEN) return true;
+    if (isConnectingRef.current) return false;
 
     isConnectingRef.current = true;
-    updateStatus('processing');
     setError(null);
 
     try {
-      // 1. Request microphone access with echo cancellation & noise suppression
+      console.log('[initSession] requesting microphone...');
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
+          sampleRate: INPUT_SAMPLE_RATE,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         },
       });
       mediaStreamRef.current = stream;
+      console.log('[initSession] microphone granted');
 
-      // Initialize audio contexts on user gesture
+      // Build input audio context + processor
       audioContextInputRef.current = new (window.AudioContext ||
         (window as any).webkitAudioContext)({ sampleRate: INPUT_SAMPLE_RATE });
-      audioContextOutputRef.current = new (window.AudioContext ||
-        (window as any).webkitAudioContext)({ sampleRate: OUTPUT_SAMPLE_RATE });
-
       if (audioContextInputRef.current.state === 'suspended') {
         await audioContextInputRef.current.resume();
       }
-      if (audioContextOutputRef.current.state === 'suspended') {
-        await audioContextOutputRef.current.resume();
-      }
-
-      // Auto-resume audio contexts
       audioContextInputRef.current.onstatechange = () => {
-        if (audioContextInputRef.current && audioContextInputRef.current.state === 'suspended') {
+        if (audioContextInputRef.current?.state === 'suspended') {
           audioContextInputRef.current.resume().catch(() => {});
         }
       };
+
+      // Build output audio context
+      audioContextOutputRef.current = new (window.AudioContext ||
+        (window as any).webkitAudioContext)({ sampleRate: OUTPUT_SAMPLE_RATE });
+      if (audioContextOutputRef.current.state === 'suspended') {
+        await audioContextOutputRef.current.resume();
+      }
       audioContextOutputRef.current.onstatechange = () => {
-        if (audioContextOutputRef.current && audioContextOutputRef.current.state === 'suspended') {
+        if (audioContextOutputRef.current?.state === 'suspended') {
           audioContextOutputRef.current.resume().catch(() => {});
         }
       };
 
-      // 2. Setup microphone processor (only sends data when isRecordingRef.current === true)
+      // Wire microphone → ScriptProcessor (gated by isRecordingRef)
       const source = audioContextInputRef.current.createMediaStreamSource(stream);
-      scriptProcessorRef.current = audioContextInputRef.current.createScriptProcessor(
-        BUFFER_SIZE,
-        1,
-        1
-      );
-
-      scriptProcessorRef.current.onaudioprocess = (audioEvent) => {
-        // Strict Push-to-Talk filter: Do NOT stream any audio unless user is holding the button!
+      const processor = audioContextInputRef.current.createScriptProcessor(BUFFER_SIZE, 1, 1);
+      processor.onaudioprocess = (ev) => {
         if (!isRecordingRef.current) return;
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+        if (!sessionReadyRef.current) return;
         if (isToolExecutingRef.current) return;
 
-        const inputData = audioEvent.inputBuffer.getChannelData(0);
-
-        // Send PCM 16-bit audio chunk to Gemini
-        const pcmBuffer = floatTo16BitPCM(inputData);
-        const base64Audio = arrayBufferToBase64(pcmBuffer);
-
+        const pcm = floatTo16BitPCM(ev.inputBuffer.getChannelData(0));
         wsRef.current.send(
           JSON.stringify({
             realtimeInput: {
-              mediaChunks: [
-                {
-                  data: base64Audio,
-                  mimeType: 'audio/pcm;rate=16000',
-                },
-              ],
+              mediaChunks: [{ data: arrayBufferToBase64(pcm), mimeType: 'audio/pcm;rate=16000' }],
             },
           })
         );
       };
+      source.connect(processor);
+      processor.connect(audioContextInputRef.current.destination);
+      scriptProcessorRef.current = processor;
 
-      source.connect(scriptProcessorRef.current);
-      scriptProcessorRef.current.connect(audioContextInputRef.current.destination);
+      // Fetch WS URL from worker
+      console.log('[initSession] fetching /api/gemini-session...');
+      const resp = await fetch('/api/gemini-session');
+      const data = await resp.json();
+      if (!resp.ok || !data.url) throw new Error(data.error || 'No WebSocket URL returned.');
 
-      // 3. Fetch connection details from API endpoint
-      const response = await fetch('/api/gemini-session');
-      const data = await response.json();
-
-      if (!response.ok || !data.url) {
-        throw new Error(data.error || 'Failed to initialize session parameters.');
-      }
-
-      // 4. Establish WebSocket connection
+      console.log('[initSession] connecting WebSocket...');
       const ws = new WebSocket(data.url);
       wsRef.current = ws;
 
-      return new Promise<WebSocket>((resolve, reject) => {
+      // Wait for setupComplete
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Session setup timed out.')), 15000);
+
         ws.onopen = () => {
-          console.log('Gemini Live WebSocket opened.');
+          console.log('[WS] open → sending setup');
           setupSession(ws);
         };
 
         ws.onmessage = async (event) => {
           try {
-            let rawData = event.data;
-            if (rawData instanceof Blob) {
-              rawData = await rawData.text();
-            } else if (rawData instanceof ArrayBuffer) {
-              rawData = new TextDecoder().decode(rawData);
-            }
+            let raw = event.data;
+            if (raw instanceof Blob) raw = await raw.text();
+            else if (raw instanceof ArrayBuffer) raw = new TextDecoder().decode(raw);
 
-            const message = JSON.parse(rawData);
+            const msg = JSON.parse(raw);
+            console.log('[WS] message keys:', Object.keys(msg));
 
-            // Confirmation of session setup
-            if (message.setupComplete) {
-              console.log('Gemini Live setup complete.');
+            if (msg.setupComplete) {
+              console.log('[WS] setupComplete received');
+              sessionReadyRef.current = true;
               isConnectingRef.current = false;
-              resolve(ws);
+              clearTimeout(timeout);
+              resolve();
             }
 
-            // Handle server audio stream
-            if (message.serverContent?.modelTurn?.parts) {
-              for (const part of message.serverContent.modelTurn.parts) {
-                if (part.inlineData && part.inlineData.data) {
-                  playPCMChunk(part.inlineData.data);
-                }
+            if (msg.serverContent?.modelTurn?.parts) {
+              for (const part of msg.serverContent.modelTurn.parts) {
+                if (part.inlineData?.data) playPCMChunk(part.inlineData.data);
               }
             }
 
-            // Handle function calling
-            if (message.toolCall?.functionCalls) {
-              for (const call of message.toolCall.functionCalls) {
-                handleToolCall(ws, call);
-              }
+            if (msg.toolCall?.functionCalls) {
+              for (const call of msg.toolCall.functionCalls) handleToolCall(ws, call);
             }
-          } catch (err) {
-            console.error('Error parsing WebSocket message:', err);
+
+            // After AI response turn ends
+            if (msg.serverContent?.turnComplete && !isRecordingRef.current) {
+              updateStatus('idle');
+            }
+          } catch (e) {
+            console.error('[WS] parse error:', e);
           }
         };
 
         ws.onerror = (e) => {
-          console.error('WebSocket Error:', e);
-          setError('Voice connection error occurred.');
-          isConnectingRef.current = false;
-          disconnect();
-          reject(e);
+          clearTimeout(timeout);
+          reject(new Error('WebSocket connection error.'));
         };
 
         ws.onclose = (e) => {
-          console.log('WebSocket closed:', e.code, e.reason);
-          isConnectingRef.current = false;
-          if (e.code !== 1000 && e.reason) {
-            setError(e.reason);
+          clearTimeout(timeout);
+          console.log('[WS] closed:', e.code, e.reason);
+          if (sessionReadyRef.current) {
+            // Session was established; clean up gracefully
+            if (e.code !== 1000 && e.reason) setError(e.reason);
+            sessionReadyRef.current = false;
+            isRecordingRef.current = false;
+            isConnectingRef.current = false;
+            setIsHolding(false);
+            updateStatus('idle');
+          } else {
+            reject(new Error(`WS closed before setup: ${e.code} ${e.reason}`));
           }
-          disconnect();
         };
       });
+
+      console.log('[initSession] session ready!');
+      return true;
     } catch (err: any) {
-      console.error('Connection initialization failed:', err);
+      console.error('[initSession] failed:', err);
       isConnectingRef.current = false;
-      setError(err.message || 'Microphone or connection failed.');
+      sessionReadyRef.current = false;
+      setError(err.message || 'Failed to start session.');
       disconnect();
-      return null;
+      return false;
     }
-  }, [disconnect, setupSession, playPCMChunk, handleToolCall, updateStatus]);
+  }, [setupSession, playPCMChunk, handleToolCall, updateStatus, disconnect]);
 
-  // ─── 5. Push-to-Talk (Hold to Speak) Handlers ────────────────────────────────
+  // ─── Push-to-Talk handlers ────────────────────────────────────────────────────
   const startHoldToSpeak = useCallback(async () => {
+    if (isHolding) return; // double-fire guard
     setIsHolding(true);
-    stopAIPlayback(); // If AI is speaking, interrupt immediately
+    stopAIPlayback();
 
-    try {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        updateStatus('processing');
-        const ws = await connectAndInit();
-        if (!ws) {
-          setIsHolding(false);
-          return;
-        }
+    const alreadyConnected =
+      sessionReadyRef.current && wsRef.current?.readyState === WebSocket.OPEN;
+
+    if (!alreadyConnected) {
+      updateStatus('processing');
+      const ok = await initSession();
+      if (!ok) {
+        setIsHolding(false);
+        return;
       }
-
-      // Start streaming audio
-      isRecordingRef.current = true;
-      updateStatus('listening');
-    } catch (e) {
-      setIsHolding(false);
-      updateStatus('idle');
     }
-  }, [connectAndInit, stopAIPlayback, updateStatus]);
+
+    // Signal start of user speech to Gemini
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({ realtimeInput: { activityStart: {} } }));
+        console.log('[PTT] activityStart sent');
+      } catch (e) {
+        console.error('[PTT] failed to send activityStart:', e);
+      }
+    }
+
+    // Start streaming mic audio
+    isRecordingRef.current = true;
+    updateStatus('listening');
+    console.log('[PTT] recording started');
+  }, [isHolding, stopAIPlayback, updateStatus, initSession]);
 
   const releaseHoldToSpeak = useCallback(() => {
+    if (!isHolding) return;
     setIsHolding(false);
 
-    if (isRecordingRef.current) {
-      isRecordingRef.current = false;
-      updateStatus('processing'); // Transition to thinking while waiting for AI response
+    if (!isRecordingRef.current) return;
+    isRecordingRef.current = false;
+    console.log('[PTT] recording stopped → waiting for AI response');
+    updateStatus('processing');
 
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        // 1. Send trailing empty/silence buffer to cleanly flush the audio pipeline
-        const silenceBuffer = new ArrayBuffer(640);
-        const base64Silence = arrayBufferToBase64(silenceBuffer);
-        try {
-          wsRef.current.send(
-            JSON.stringify({
-              realtimeInput: {
-                mediaChunks: [
-                  {
-                    data: base64Silence,
-                    mimeType: 'audio/pcm;rate=16000',
-                  },
-                ],
-              },
-            })
-          );
-        } catch (e) {}
-
-        // 2. Explicitly signal end-of-turn with valid turns structure so Gemini generates response immediately with zero error
-        try {
-          wsRef.current.send(
-            JSON.stringify({
-              clientContent: {
-                turns: [
-                  {
-                    role: 'user',
-                    parts: [{ text: ' ' }],
-                  },
-                ],
-                turnComplete: true,
-              },
-            })
-          );
-        } catch (e) {}
+    // Signal end of user speech so Gemini generates a response
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      try {
+        wsRef.current.send(JSON.stringify({ realtimeInput: { activityEnd: {} } }));
+        console.log('[PTT] activityEnd sent');
+      } catch (e) {
+        console.error('[PTT] failed to send activityEnd:', e);
       }
     }
-  }, [updateStatus]);
+  }, [isHolding, updateStatus]);
 
-  useEffect(() => {
-    return () => {
-      disconnect();
-    };
-  }, [disconnect]);
+  useEffect(() => () => disconnect(), [disconnect]);
 
-  return {
-    status,
-    error,
-    isHolding,
-    startHoldToSpeak,
-    releaseHoldToSpeak,
-    disconnect,
-  };
+  return { status, error, isHolding, startHoldToSpeak, releaseHoldToSpeak, disconnect };
 }
