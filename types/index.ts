@@ -62,7 +62,15 @@ export interface AppSettings {
   active_project_id?: string;
 }
 
-// ─── Session / Lead ──────────────────────────────────────────────────────────
+// ─── Lead Statuses ───────────────────────────────────────────────────────────
+// - new: Unopened lead that the admin hasn't opened yet from dashboard
+// - qualified: AI detected buying signals (downpayment, 7-yr installment, budget, visit)
+// - need_assistance: Special payment plan requested or questions the AI didn't have
+// - contacted: Sales team has reached out
+// - closed: Deal finalized or inquiry completed
+export type LeadStatus = 'new' | 'qualified' | 'need_assistance' | 'contacted' | 'closed';
+
+// ─── Session / Lead (Strictly WhatsApp Click Actions) ─────────────────────────
 export interface LeadSession {
   id: string;
   project_id?: string;              // Project ID for multi-project attribution
@@ -74,7 +82,10 @@ export interface LeadSession {
   visitor_phone?: string;
   conversation_summary: string;
   requested_details: RequestedDetail[];
-  status: 'new' | 'contacted' | 'qualified' | 'closed';
+  status: LeadStatus;
+  is_opened?: boolean;              // Tracks if admin clicked to view in dashboard
+  whatsapp_clicked?: boolean;       // Strictly true for leads
+  lead_trigger?: 'whatsapp_button_click';
   language: 'en' | 'ar';
 }
 
@@ -88,15 +99,15 @@ export interface DailyAnalytics {
   date: string;
   visitor_count: number;
   avg_session_duration: number;
-  leads_count: number;
+  leads_count: number;              // WhatsApp click conversions
   project_id?: string;
 }
 
 export interface AnalyticsSummary {
   total_visitors: number;
   avg_session_duration: number;
-  total_leads: number;
-  conversion_rate: number;
+  total_leads: number;              // Total WhatsApp click conversions
+  conversion_rate: number;          // (total_leads / total_visitors) * 100%
   daily: DailyAnalytics[];
 }
 

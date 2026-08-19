@@ -129,26 +129,29 @@ export const mockSettings: AppSettings = {
   active_project_id: 'proj_grand_tower',
 };
 
-// ─── Mock Lead Sessions (Tagged by Project) ───────────────────────────────────
+// ─── Mock Lead Sessions (Strictly Visitors who clicked WhatsApp) ──────────────
 export const mockSessions: LeadSession[] = [
   {
     id: 'sess_001',
     project_id: 'proj_grand_tower',
     project_slug: 'grand-tower',
     project_name: 'The Grand Tower',
-    created_at: '2026-08-18T09:14:00Z',
+    created_at: '2026-08-19T10:14:00Z',
     duration_seconds: 342,
     visitor_name: 'Ahmed Hassan',
     visitor_phone: '+20 100 123 4567',
     conversation_summary:
-      'Visitor asked about 2-bedroom apartment pricing on floors 15-20 in The Grand Tower. Interested in 7-year installment plans. Budget around EGP 3.5M–4.2M.',
+      'Visitor clicked WhatsApp inquiry for 2-bedroom apartment pricing on floors 15-20 in The Grand Tower with 7-year installment plan. Budget: EGP 3.5M–4.2M.',
     requested_details: [
       { key: 'Unit Type', value: '2-Bedroom Apartment' },
       { key: 'Preferred Floor', value: '15–20' },
       { key: 'Budget', value: 'EGP 3.5M – 4.2M' },
       { key: 'Payment Plan', value: '7-Year Installment' },
     ],
-    status: 'new',
+    status: 'new', // Unopened by admin yet
+    is_opened: false,
+    whatsapp_clicked: true,
+    lead_trigger: 'whatsapp_button_click',
     language: 'ar',
   },
   {
@@ -156,18 +159,21 @@ export const mockSessions: LeadSession[] = [
     project_id: 'proj_marina_bay',
     project_slug: 'marina-bay',
     project_name: 'Marina Bay Luxury Residences',
-    created_at: '2026-08-18T10:02:00Z',
+    created_at: '2026-08-18T16:02:00Z',
     duration_seconds: 218,
     visitor_name: 'Sara Khalil',
     visitor_phone: '+20 111 987 6543',
     conversation_summary:
-      'Interested in 1-bedroom lagoon chalets in Marina Bay for investment. Asked about rental yields and pool access.',
+      'Clicked WhatsApp inquiry for 1-bedroom lagoon chalets in Marina Bay. Asking about rental yields and pool access.',
     requested_details: [
       { key: 'Unit Type', value: 'Lagoon Chalet' },
       { key: 'Purpose', value: 'Investment' },
       { key: 'View Preference', value: 'Lagoon View' },
     ],
-    status: 'contacted',
+    status: 'qualified', // High buying signals (specific unit, budget, timeline)
+    is_opened: true,
+    whatsapp_clicked: true,
+    lead_trigger: 'whatsapp_button_click',
     language: 'en',
   },
   {
@@ -177,18 +183,20 @@ export const mockSessions: LeadSession[] = [
     project_name: 'The Grand Tower',
     created_at: '2026-08-17T14:35:00Z',
     duration_seconds: 487,
-    visitor_name: 'Omar Farouk',
-    visitor_phone: '+20 122 555 1234',
+    visitor_name: 'Tarek Mansour',
+    visitor_phone: '+20 122 555 9876',
     conversation_summary:
-      'Detailed inquiry about 3-bedroom penthouse specifications, smart home systems, and parking allocation. Requested video call with senior sales manager.',
+      'Visitor requested a custom 10-year flexible payment plan with bullet payments, and inquired about merging two adjacent 2-bedroom units into a large suite.',
     requested_details: [
-      { key: 'Unit Type', value: '3-Bedroom Penthouse' },
-      { key: 'Floor', value: 'Top Floor (42nd)' },
-      { key: 'Decision Timeline', value: 'Within 2 Weeks' },
-      { key: 'Payment Mode', value: 'Bank Transfer' },
+      { key: 'Special Request', value: '10-Year Custom Payment Plan' },
+      { key: 'Customization', value: 'Merge 2 adjacent units on 25th floor' },
+      { key: 'Escalation', value: 'Senior Sales Director approval needed' },
     ],
-    status: 'qualified',
-    language: 'en',
+    status: 'need_assistance', // Needs special payment plan / custom inquiry
+    is_opened: true,
+    whatsapp_clicked: true,
+    lead_trigger: 'whatsapp_button_click',
+    language: 'ar',
   },
   {
     id: 'sess_004',
@@ -200,22 +208,26 @@ export const mockSessions: LeadSession[] = [
     visitor_name: 'Nour El-Din',
     visitor_phone: '+20 109 876 5432',
     conversation_summary:
-      'Asked about delivery date and beach club membership fees for Marina Bay.',
+      'Contract signed and reservation deposit paid for 3-Bedroom Villa in Marina Bay.',
     requested_details: [
       { key: 'Unit Type', value: '3-Bedroom Villa' },
       { key: 'Delivery', value: 'Summer 2026' },
+      { key: 'Status', value: 'Contract Signed' },
     ],
     status: 'closed',
+    is_opened: true,
+    whatsapp_clicked: true,
+    lead_trigger: 'whatsapp_button_click',
     language: 'ar',
   },
 ];
 
-// ─── Analytics Seed Data ──────────────────────────────────────────────────────
+// ─── Analytics Seed Data (Leads strictly count WhatsApp button clicks) ────────
 export const mockAnalytics: AnalyticsSummary = {
   total_visitors: 1284,
   avg_session_duration: 285,
-  total_leads: 94,
-  conversion_rate: 7.3,
+  total_leads: 94, // WhatsApp click leads
+  conversion_rate: 7.3, // (94 / 1284) * 100%
   daily: [
     { date: '2026-08-13', visitor_count: 142, avg_session_duration: 260, leads_count: 11 },
     { date: '2026-08-14', visitor_count: 168, avg_session_duration: 290, leads_count: 14 },
