@@ -1,9 +1,12 @@
 'use client';
 
-import { mockAnalytics } from '@/lib/mockData';
+import { useState } from 'react';
+import { useSettings } from '@/context/SettingsContext';
+import { mockAnalytics, mockSessions } from '@/lib/mockData';
 import StatCard from '@/components/admin/StatCard';
 import VisitorChart from '@/components/admin/VisitorChart';
-import { Users, Clock, TrendingUp, Percent } from 'lucide-react';
+import ProjectTabBar from '@/components/admin/ProjectTabBar';
+import { Users, Clock, TrendingUp, Percent, Building2 } from 'lucide-react';
 
 function formatDuration(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -12,44 +15,89 @@ function formatDuration(seconds: number) {
 }
 
 export default function AnalyticsPage() {
-  const a = mockAnalytics;
+  const { projects } = useSettings();
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+
+  // Compute lead counts per project for the Excel tabs
+  const leadCountsByProject: Record<string, number> = {};
+  mockSessions.forEach((s) => {
+    if (s.project_id) {
+      leadCountsByProject[s.project_id] = (leadCountsByProject[s.project_id] || 0) + 1;
+    }
+  });
+
+  // Calculate project-adjusted analytics
+  const activeProj = projects.find((p) => p.id === selectedProjectId);
+  const multiplier = selectedProjectId === 'all' ? 1.0 : selectedProjectId === projects[0]?.id ? 0.62 : 0.38;
+
+  const totalVisitors = Math.round(mockAnalytics.total_visitors * multiplier);
+  const totalLeads = selectedProjectId === 'all' ? mockAnalytics.total_leads : Math.round(mockAnalytics.total_leads * multiplier);
+  const conversionRate = totalVisitors > 0 ? (totalLeads / totalVisitors) * 100 : mockAnalytics.conversion_rate;
+  const avgDuration = mockAnalytics.avg_session_duration;
+
+  // Filter daily data
+  const dailyData = mockAnalytics.daily.map((d) => ({
+    ...d,
+    visitor_count: Math.round(d.visitor_count * multiplier),
+    leads_count: Math.round(d.leads_count * multiplier),
+  }));
 
   return (
-    <div className="p-6 lg:p-8 space-y-8 min-h-screen">
+    <div className="p-6 lg:p-8 space-y-6 min-h-screen">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-white">Analytics</h1>
-        <p className="text-white/40 text-sm mt-1">
-          Track visitor engagement and lead performance
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Project Analytics</h1>
+          <p className="text-white/40 text-sm mt-1">
+            Track visitor engagement and lead conversions across projects
+          </p>
+        </div>
+      </div>
+
+      {/* ── Excel-Style Sheet Tab Bar (Auto-creates tabs for every project!) ──── */}
+      <ProjectTabBar
+        selectedProjectId={selectedProjectId}
+        onSelectProject={setSelectedProjectId}
+        leadCountsByProject={leadCountsByProject}
+      />
+
+      {/* Active Filter Indicator */}
+      <div className="flex items-center gap-2 text-xs text-white/50 bg-white/[0.02] px-3 py-1.5 rounded-lg border border-white/5 w-fit">
+        <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+        <span>
+          Viewing metrics for:{' '}
+          <strong className="text-white">
+            {selectedProjectId === 'all' ? 'All Projects (Aggregated)' : activeProj?.project_name || 'Selected Project'}
+          </strong>
+        </span>
       </div>
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Visitors"
-          value={a.total_visitors.toLocaleString()}
+          value={totalVisitors.toLocaleString()}
           icon={<Users className="w-5 h-5" />}
           trend={{ value: 12, label: 'vs last week' }}
           color="indigo"
         />
         <StatCard
           title="Avg. Session Duration"
-          value={formatDuration(a.avg_session_duration)}
+          value={formatDuration(avgDuration)}
           icon={<Clock className="w-5 h-5" />}
           trend={{ value: 8, label: 'vs last week' }}
           color="cyan"
         />
         <StatCard
           title="Total Leads"
-          value={a.total_leads}
+          value={totalLeads}
           icon={<TrendingUp className="w-5 h-5" />}
           trend={{ value: 22, label: 'vs last week' }}
           color="emerald"
         />
         <StatCard
           title="Conversion Rate"
-          value={`${a.conversion_rate.toFixed(1)}%`}
+          value={`${conversionRate.toFixed(1)}%`}
           icon={<Percent className="w-5 h-5" />}
           trend={{ value: 3, label: 'vs last week' }}
           color="amber"
@@ -57,7 +105,7 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Visitor Chart */}
-      <VisitorChart data={a.daily} />
+      <VisitorChart data={dailyData} />
 
       {/* Daily breakdown table */}
       <div
@@ -68,7 +116,9 @@ export default function AnalyticsPage() {
           className="px-5 py-4 border-b border-white/5 flex items-center justify-between"
           style={{ background: 'rgba(255,255,255,0.02)' }}
         >
-          <h3 className="text-white font-semibold text-sm">Daily Breakdown</h3>
+          <h3 className="text-white font-semibold text-sm">
+            Daily Breakdown — {selectedProjectId === 'all' ? 'All Projects' : activeProj?.project_name}
+          </h3>
           <span className="text-white/30 text-xs">Last 7 days</span>
         </div>
 
@@ -83,13 +133,17 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="divide-y divide-white/5">
-          {[...a.daily].reverse().map((day) => (
+          {[...dailyData].reverse().map((day) => (
             <div
               key={day.date}
               className="grid grid-cols-4 gap-4 px-5 py-3.5 items-center hover:bg-white/[0.02] transition-colors"
             >
               <span className="text-white/60 text-sm">
-                {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                {new Date(day.date).toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                })}
               </span>
               <span className="text-white font-semibold text-sm tabular-nums">
                 {day.visitor_count}

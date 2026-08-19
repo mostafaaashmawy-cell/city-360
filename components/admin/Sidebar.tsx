@@ -39,25 +39,34 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { settings, language } = useSettings();
+  const { activeProject, language } = useSettings();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const companyName = language === 'ar' ? settings.company_name_ar : settings.company_name;
+  const companyName =
+    language === 'ar' ? activeProject.company_name_ar : activeProject.company_name;
+  const projectName =
+    language === 'ar' ? activeProject.project_name_ar : activeProject.project_name;
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Brand */}
       <div className="px-5 py-6 border-b border-white/5">
         <div className="flex items-center gap-3">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-white text-sm"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #06b6d4)' }}
-          >
-            {companyName.charAt(0)}
+          <div className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center p-1 border border-white/15 overflow-hidden flex-shrink-0">
+            {activeProject.company_logo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={activeProject.company_logo_url}
+                alt={companyName}
+                className="max-w-full max-h-full object-contain"
+              />
+            ) : (
+              <span className="font-bold text-white text-sm">{companyName.charAt(0)}</span>
+            )}
           </div>
-          <div>
-            <p className="text-white font-semibold text-sm">{companyName}</p>
-            <p className="text-white/40 text-xs">Admin Dashboard</p>
+          <div className="overflow-hidden">
+            <p className="text-white font-semibold text-sm truncate">{companyName}</p>
+            <p className="text-white/40 text-xs truncate">{projectName}</p>
           </div>
         </div>
       </div>
@@ -101,7 +110,7 @@ export default function Sidebar() {
       {/* Footer */}
       <div className="px-3 py-4 border-t border-white/5 space-y-2">
         <Link
-          href="/"
+          href={`/?project=${activeProject.slug}`}
           target="_blank"
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white hover:bg-white/5 transition-all"
         >

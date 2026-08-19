@@ -3,14 +3,17 @@
 import { useSettings } from '@/context/SettingsContext';
 
 export default function WhatsAppButton() {
-  const { settings, language, isRTL } = useSettings();
+  const { activeProject, language, isRTL } = useSettings();
 
-  const message = language === 'ar'
-    ? `مرحباً، أنا مهتم بمشروع ${settings.project_name_ar}، هل يمكنني الحصول على مزيد من المعلومات؟`
-    : `Hello! I'm interested in ${settings.project_name}. Can I get more details?`;
+  const projectName = language === 'ar' ? activeProject.project_name_ar : activeProject.project_name;
+
+  const message =
+    language === 'ar'
+      ? `مرحباً، أنا مهتم بمشروع ${projectName}، هل يمكنني الحصول على مزيد من المعلومات؟`
+      : `Hello! I am interested in ${projectName}. Can I get more details?`;
 
   const encodedMessage = encodeURIComponent(message);
-  const whatsappUrl = `https://wa.me/${settings.whatsapp_number}?text=${encodedMessage}`;
+  const whatsappUrl = `https://wa.me/${activeProject.whatsapp_number || '201000000000'}?text=${encodedMessage}`;
 
   return (
     <a

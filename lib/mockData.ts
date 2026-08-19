@@ -1,6 +1,67 @@
-import type { AppSettings, LeadSession, AnalyticsSummary, SmartCardData } from '@/types';
+import type { AppSettings, LeadSession, AnalyticsSummary, SmartCardData, Project } from '@/types';
 
-// ─── Demo Smart Cards (shown when AI agent speaks) ────────────────────────────
+// ─── Default System Prompt Template for Projects ─────────────────────────────
+export const DEFAULT_AI_PROMPT = `You are Layla, an expert real estate sales agent representing City Scale Physical & Visual Modeling Co.
+Speak in a warm, professional, and consultative manner. You seamlessly speak Arabic (Egyptian dialect) and English.
+Calculate and present financial installments based on a 7-year installment plan with a 10% downpayment.
+When discussing prices, unit areas, or payment schedules, you MUST trigger the 'show_dynamic_smart_cards' tool to show the cards visually on screen.`;
+
+// ─── Initial Mock Projects ────────────────────────────────────────────────────
+export const mockProjects: Project[] = [
+  {
+    id: 'proj_grand_tower',
+    slug: 'grand-tower',
+    is_active: true,
+    company_name: 'City Scale',
+    company_name_ar: 'سيتي سكيل',
+    project_name: 'The Grand Tower',
+    project_name_ar: 'البرج الكبير',
+    virtual_tour_url:
+      'https://www.coohom.com/pub/tool/panorama/aiwalking?obsPlanId=3FO3DBYBNCU7&locale=en_US',
+    company_logo_url: '/city-scale-logo.png',
+    whatsapp_number: '201000000000',
+    primary_color: '#6366f1',
+    ai_voice: 'Aoede',
+    ai_tone: 'consultative',
+    ai_agent_name: 'Layla',
+    ai_prompt: `You are Layla, the official sales advisor for "The Grand Tower" by City Scale.
+The Grand Tower is a luxury 42-story residential tower located in the heart of New Cairo with full panoramic skyline views.
+Key Specs:
+- 2-Bedroom Apartments: 142 m², starting at EGP 3.5M (Downpayment 10% = 350,000 EGP, 12,500 EGP/month over 7 years).
+- 3-Bedroom Penthouses: 220 m², starting at EGP 6.2M.
+- Delivery: Q4 2027, Fully Finished with Smart Home automation.
+- Amenities: Infinity pool, 2 private parking spots per unit, fitness wellness club.
+Always trigger 'show_dynamic_smart_cards' when quoting prices or payment terms.`,
+    created_at: '2026-08-01T10:00:00Z',
+  },
+  {
+    id: 'proj_marina_bay',
+    slug: 'marina-bay',
+    is_active: true,
+    company_name: 'City Scale',
+    company_name_ar: 'سيتي سكيل',
+    project_name: 'Marina Bay Luxury Residences',
+    project_name_ar: 'مارينا باي ريزيدنسز',
+    virtual_tour_url:
+      'https://www.coohom.com/pub/tool/panorama/aiwalking?obsPlanId=3FO3DBYBNCU7&locale=en_US',
+    company_logo_url: '/city-scale-logo.png',
+    whatsapp_number: '201000000000',
+    primary_color: '#06b6d4',
+    ai_voice: 'Kore',
+    ai_tone: 'friendly',
+    ai_agent_name: 'Sarah',
+    ai_prompt: `You are Sarah, sales consultant for "Marina Bay Luxury Residences" by City Scale.
+Marina Bay is a waterfront residential community with private lagoon views on the North Coast.
+Key Specs:
+- 1-Bedroom Chalets: 85 m², starting at EGP 2.2M (Downpayment 10% = 220,000 EGP, 8,200 EGP/month over 7 years).
+- 3-Bedroom Lagoon Villas: 195 m², starting at EGP 5.4M.
+- Delivery: Summer 2026, Ultra Super Lux.
+Always trigger 'show_dynamic_smart_cards' when discussing numbers and units.`,
+    created_at: '2026-08-05T12:00:00Z',
+  },
+];
+
+// ─── Demo Smart Cards ─────────────────────────────────────────────────────────
 export const DEMO_SMART_CARDS: SmartCardData[] = [
   {
     id: 'dp',
@@ -52,24 +113,35 @@ export const mockSettings: AppSettings = {
   company_name_ar: 'سيتي سكيل',
   project_name: 'The Grand Tower',
   project_name_ar: 'البرج الكبير',
-  coohom_url: 'https://www.coohom.com/pub/tool/panorama/aiwalking?obsPlanId=3FO3DBYBNCU7&locale=en_US',
+  coohom_url:
+    'https://www.coohom.com/pub/tool/panorama/aiwalking?obsPlanId=3FO3DBYBNCU7&locale=en_US',
+  virtual_tour_url:
+    'https://www.coohom.com/pub/tool/panorama/aiwalking?obsPlanId=3FO3DBYBNCU7&locale=en_US',
   whatsapp_number: '201000000000',
   ai_api_key: '',
-  ai_connection_method: 'vapi',
+  ai_connection_method: 'gemini',
   ai_agent_name: 'Layla',
+  ai_voice: 'Aoede',
+  ai_tone: 'consultative',
+  ai_prompt: DEFAULT_AI_PROMPT,
   primary_color: '#6366f1',
+  projects: mockProjects,
+  active_project_id: 'proj_grand_tower',
 };
 
-// ─── Mock Lead Sessions ───────────────────────────────────────────────────────
+// ─── Mock Lead Sessions (Tagged by Project) ───────────────────────────────────
 export const mockSessions: LeadSession[] = [
   {
     id: 'sess_001',
-    created_at: '2026-08-11T09:14:00Z',
+    project_id: 'proj_grand_tower',
+    project_slug: 'grand-tower',
+    project_name: 'The Grand Tower',
+    created_at: '2026-08-18T09:14:00Z',
     duration_seconds: 342,
     visitor_name: 'Ahmed Hassan',
     visitor_phone: '+20 100 123 4567',
     conversation_summary:
-      'Visitor asked about 2-bedroom apartment pricing and availability on floors 15-20. Interested in installment plans over 7 years. Requested a callback from the sales team. Mentioned budget range of EGP 3.5M–4.2M.',
+      'Visitor asked about 2-bedroom apartment pricing on floors 15-20 in The Grand Tower. Interested in 7-year installment plans. Budget around EGP 3.5M–4.2M.',
     requested_details: [
       { key: 'Unit Type', value: '2-Bedroom Apartment' },
       { key: 'Preferred Floor', value: '15–20' },
@@ -81,96 +153,76 @@ export const mockSessions: LeadSession[] = [
   },
   {
     id: 'sess_002',
-    created_at: '2026-08-11T10:02:00Z',
+    project_id: 'proj_marina_bay',
+    project_slug: 'marina-bay',
+    project_name: 'Marina Bay Luxury Residences',
+    created_at: '2026-08-18T10:02:00Z',
     duration_seconds: 218,
     visitor_name: 'Sara Khalil',
     visitor_phone: '+20 111 987 6543',
     conversation_summary:
-      'Interested in studio and 1-bedroom units for investment purposes. Asked about ROI and rental yields. Showed interest in pool-view units. Ready to book a site visit.',
+      'Interested in 1-bedroom lagoon chalets in Marina Bay for investment. Asked about rental yields and pool access.',
     requested_details: [
-      { key: 'Unit Type', value: 'Studio / 1-Bedroom' },
+      { key: 'Unit Type', value: 'Lagoon Chalet' },
       { key: 'Purpose', value: 'Investment' },
-      { key: 'View Preference', value: 'Pool View' },
-      { key: 'Next Step', value: 'Site Visit' },
+      { key: 'View Preference', value: 'Lagoon View' },
     ],
     status: 'contacted',
     language: 'en',
   },
   {
     id: 'sess_003',
-    created_at: '2026-08-10T16:45:00Z',
+    project_id: 'proj_grand_tower',
+    project_slug: 'grand-tower',
+    project_name: 'The Grand Tower',
+    created_at: '2026-08-17T14:35:00Z',
     duration_seconds: 487,
     visitor_name: 'Omar Farouk',
     visitor_phone: '+20 122 555 1234',
     conversation_summary:
-      'Asked detailed questions about finishing specs, smart home features, and parking allocation. Compared with another project. Needs to discuss with family before deciding.',
+      'Detailed inquiry about 3-bedroom penthouse specifications, smart home systems, and parking allocation. Requested video call with senior sales manager.',
     requested_details: [
       { key: 'Unit Type', value: '3-Bedroom Penthouse' },
-      { key: 'Special Features', value: 'Smart Home, 2 Parking Spots' },
-      { key: 'Decision Timeline', value: '2–3 Weeks' },
+      { key: 'Floor', value: 'Top Floor (42nd)' },
+      { key: 'Decision Timeline', value: 'Within 2 Weeks' },
+      { key: 'Payment Mode', value: 'Bank Transfer' },
     ],
     status: 'qualified',
     language: 'en',
   },
   {
     id: 'sess_004',
-    created_at: '2026-08-10T11:20:00Z',
-    duration_seconds: 95,
-    visitor_name: 'Nour Elbaz',
-    visitor_phone: undefined,
+    project_id: 'proj_marina_bay',
+    project_slug: 'marina-bay',
+    project_name: 'Marina Bay Luxury Residences',
+    created_at: '2026-08-16T11:20:00Z',
+    duration_seconds: 156,
+    visitor_name: 'Nour El-Din',
+    visitor_phone: '+20 109 876 5432',
     conversation_summary:
-      'Short session. Visitor browsed the tour and asked about the project location. No specific unit inquired. Directed to WhatsApp for further details.',
-    requested_details: [{ key: 'Interest', value: 'Project Location & General Info' }],
-    status: 'new',
-    language: 'ar',
-  },
-  {
-    id: 'sess_005',
-    created_at: '2026-08-09T14:10:00Z',
-    duration_seconds: 610,
-    visitor_name: 'Karim Mansour',
-    visitor_phone: '+20 100 777 8888',
-    conversation_summary:
-      'Very engaged session. Discussed downpayment options (10% vs 15%), delivery date, and contract terms. Requested a detailed brochure and price list. High-priority lead.',
+      'Asked about delivery date and beach club membership fees for Marina Bay.',
     requested_details: [
-      { key: 'Unit Type', value: '2-Bedroom' },
-      { key: 'Downpayment', value: '10% preferred' },
-      { key: 'Delivery', value: 'Q4 2027' },
-      { key: 'Documents', value: 'Brochure + Price List' },
-    ],
-    status: 'qualified',
-    language: 'ar',
-  },
-  {
-    id: 'sess_006',
-    created_at: '2026-08-09T09:05:00Z',
-    duration_seconds: 290,
-    visitor_name: 'Fatma Youssef',
-    visitor_phone: '+20 111 222 3344',
-    conversation_summary:
-      'Asked about amenities — gym, swimming pool, kids area. Very interested in family-friendly aspect. Requested a brochure.',
-    requested_details: [
-      { key: 'Unit Type', value: '3-Bedroom' },
-      { key: 'Amenities Focus', value: 'Family-Friendly' },
+      { key: 'Unit Type', value: '3-Bedroom Villa' },
+      { key: 'Delivery', value: 'Summer 2026' },
     ],
     status: 'closed',
     language: 'ar',
   },
 ];
 
-// ─── Mock Analytics ───────────────────────────────────────────────────────────
+// ─── Analytics Seed Data ──────────────────────────────────────────────────────
 export const mockAnalytics: AnalyticsSummary = {
   total_visitors: 1284,
-  avg_session_duration: 324,
-  total_leads: 87,
-  conversion_rate: 6.77,
+  avg_session_duration: 285,
+  total_leads: 94,
+  conversion_rate: 7.3,
   daily: [
-    { date: '2026-08-05', visitor_count: 152, avg_session_duration: 280, leads_count: 9 },
-    { date: '2026-08-06', visitor_count: 178, avg_session_duration: 310, leads_count: 12 },
-    { date: '2026-08-07', visitor_count: 134, avg_session_duration: 295, leads_count: 8 },
-    { date: '2026-08-08', visitor_count: 201, avg_session_duration: 340, leads_count: 15 },
-    { date: '2026-08-09', visitor_count: 167, avg_session_duration: 318, leads_count: 11 },
-    { date: '2026-08-10', visitor_count: 145, avg_session_duration: 302, leads_count: 10 },
-    { date: '2026-08-11', visitor_count: 307, avg_session_duration: 412, leads_count: 22 },
+    { date: '2026-08-13', visitor_count: 142, avg_session_duration: 260, leads_count: 11 },
+    { date: '2026-08-14', visitor_count: 168, avg_session_duration: 290, leads_count: 14 },
+    { date: '2026-08-15', visitor_count: 195, avg_session_duration: 310, leads_count: 18 },
+    { date: '2026-08-16', visitor_count: 210, avg_session_duration: 275, leads_count: 16 },
+    { date: '2026-08-17', visitor_count: 180, avg_session_duration: 295, leads_count: 13 },
+    { date: '2026-08-18', visitor_count: 205, avg_session_duration: 320, leads_count: 15 },
+    { date: '2026-08-19', visitor_count: 184, avg_session_duration: 285, leads_count: 7 },
   ],
 };

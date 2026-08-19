@@ -32,6 +32,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useGeminiLive() {
   const { setAgentState, showSmartCards, hideSmartCards } = useAgent();
+  const { activeProject } = useSettings();
 
   const [status, setStatus] = useState<AgentState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -348,12 +349,16 @@ export function useGeminiLive() {
 
         ws.onopen = () => {
           console.log('[WS] open → sending setup');
-          const systemPrompt = `You are Layla, a friendly and expert Egyptian real estate sales agent representing "City Scale" physical & visual modeling company.
-Speak in a warm, helpful, and natural conversational tone.
-You can understand and speak in Arabic (Egyptian dialect) and English seamlessly based on what language the user speaks.
-Keep answers concise, clear, and focused.
-When explaining property pricing, units, downpayments, or monthly installments, calculate financial installments based on a 7-year installment plan.
-IMPORTANT RULE: Whenever you discuss or present specific financial numbers, downpayment, monthly installment, unit area, or key features, you MUST invoke the 'show_dynamic_smart_cards' tool.`;
+          const voiceName = activeProject?.ai_voice || 'Aoede';
+          const agentName = activeProject?.ai_agent_name || 'Layla';
+          const companyName = activeProject?.company_name || 'City Scale';
+          const projectName = activeProject?.project_name || 'The Grand Tower';
+          const customPrompt = activeProject?.ai_prompt || '';
+
+          const systemPrompt = `You are ${agentName}, an expert real estate sales agent representing "${companyName}" for the project "${projectName}".
+${customPrompt}
+You seamlessly speak Arabic (Egyptian dialect) and English based on the language of the user. Keep answers conversational, helpful, and concise.
+IMPORTANT RULE: Whenever you discuss or present specific financial numbers, downpayment, monthly installment, unit area, or key features, you MUST invoke the 'show_dynamic_smart_cards' tool to display these figures visually on screen.`;
 
           ws.send(
             JSON.stringify({
@@ -362,7 +367,7 @@ IMPORTANT RULE: Whenever you discuss or present specific financial numbers, down
                 generationConfig: {
                   responseModalities: ['AUDIO'],
                   speechConfig: {
-                    voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } },
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName } },
                   },
                 },
                 // Disable server-side VAD — we manage turns with activityStart/activityEnd

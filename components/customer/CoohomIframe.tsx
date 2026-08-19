@@ -2,16 +2,18 @@
 
 import { useSettings } from '@/context/SettingsContext';
 
-interface CoohomIframeProps {
-  url: string;
+interface VirtualTourIframeProps {
+  url?: string;
 }
 
-export default function CoohomIframe({ url }: CoohomIframeProps) {
-  const { settings } = useSettings();
+export default function CoohomIframe({ url }: VirtualTourIframeProps) {
+  const { activeProject } = useSettings();
+
+  const tourUrl = url || activeProject.virtual_tour_url || activeProject.coohom_url;
 
   return (
     <iframe
-      src={url || settings.coohom_url}
+      src={tourUrl}
       title="Virtual Property Tour"
       className="fixed inset-0 w-full h-full border-none"
       style={{ zIndex: 0 }}
